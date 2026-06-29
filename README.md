@@ -1,6 +1,6 @@
 # OmbiChrome
 
-A Chrome/Brave extension that lets you search for movies and TV shows and request them on your [Ombi](https://ombi.io/) instance — right from your browser toolbar.
+A Chrome/Brave extension that lets you search for movies and TV shows and request them on your [Ombi](https://ombi.io/) instance - right from your browser toolbar.
 
 Browse any movie or show page on popular sites and add it to Ombi with one click.
 
