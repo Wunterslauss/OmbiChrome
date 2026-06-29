@@ -38,16 +38,18 @@ function save() {
     return;
   }
 
-  chrome.storage.local.set({ ombiUrl, ombiApiKey, omdbApiKey }, () => {
-    try {
-      const origin = new URL(ombiUrl).origin + '/*';
-      chrome.permissions.request({ origins: [origin] }, (granted) => {
-        showStatus(granted ? 'Settings saved!' : 'Settings saved, but host permission was denied — requests to Ombi may fail.', granted ? 'success' : 'error');
+  try {
+    const origin = new URL(ombiUrl).origin + '/*';
+    chrome.permissions.request({ origins: [origin] }, (granted) => {
+      chrome.storage.local.set({ ombiUrl, ombiApiKey, omdbApiKey }, () => {
+        showStatus(granted ? 'Settings saved!' : 'Settings saved, but host permission was denied.', granted ? 'success' : 'error');
       });
-    } catch {
+    });
+  } catch {
+    chrome.storage.local.set({ ombiUrl, ombiApiKey, omdbApiKey }, () => {
       showStatus('Settings saved!', 'success');
-    }
-  });
+    });
+  }
 }
 
 async function testConnection() {

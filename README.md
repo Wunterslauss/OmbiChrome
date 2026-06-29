@@ -8,8 +8,11 @@ Browse any movie or show page on popular sites and add it to Ombi with one click
 
 - **Search** for movies and TV shows directly from the popup using your Ombi instance (powered by TMDB)
 - **Detect** the movie or show you're currently browsing and request it instantly
-- **Auto-check** whether a title is already requested, approved, or available
+- **Season & episode picker** — choose specific seasons or individual episodes when requesting TV shows
+- **Auto-check** whether a title is already requested or available on your media server
+- **Smart matching** — resolves duplicate titles (e.g. multiple movies named "Ballerina") using IMDB IDs
 - **Filter** results by Movies or TV Shows
+- **Request caching** — remembers what you've requested so the button stays accurate across popup opens
 - **Dark theme** UI inspired by Ombi's design
 
 ## Supported Sites
@@ -46,7 +49,7 @@ You'll need to configure two things in the extension settings:
 | **Ombi API Key** | Yes | Ombi → Settings → Ombi → API Key |
 | **OMDb API Key** | No | [omdbapi.com](https://www.omdbapi.com/apikey.aspx) — enables additional IMDB search results |
 
-Use the **Test Connection** button to verify your setup.
+Use the **Test Connection** button to verify your setup. You'll be prompted to grant the extension access to your Ombi server domain.
 
 ## Usage
 
@@ -54,6 +57,10 @@ Use the **Test Connection** button to verify your setup.
 1. Click the OmbiChrome icon in your toolbar
 2. Type a movie or show name and press Enter
 3. Browse results and click **Request** to add to Ombi
+4. For TV shows, a season picker opens where you can:
+   - **Request All** — request every season
+   - **Latest Season** — request only the most recent season
+   - **Request Selected** — pick individual seasons or episodes
 
 ### Page Detection
 1. Browse to any movie or show page on a supported site
@@ -61,16 +68,21 @@ Use the **Test Connection** button to verify your setup.
 3. The detected title appears at the top with its Ombi status
 4. Click **Add to Ombi** if it hasn't been requested yet
 
-## Screenshots
-
-*Coming soon*
-
 ## Tech Stack
 
 - Manifest V3
-- Chrome Storage API for settings
+- Chrome Storage API (local + session) for settings and request caching
 - Ombi API v1 for search and requests
+- Runtime permission requests for Ombi server access
 - No external dependencies
+
+## Security
+
+- API keys are stored in `chrome.storage.local` (never synced to Google)
+- Ombi server permissions are requested at runtime (no wildcard host access)
+- All user input is sanitized — no inline event handlers
+- Fetch calls have a 10-second timeout to prevent hanging
+- URL validation enforces `http://` or `https://` protocol
 
 ## License
 

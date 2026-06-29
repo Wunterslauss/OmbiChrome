@@ -288,10 +288,14 @@ function renderResults() {
         </div>
       </div>
       <div class="actions">
-        <button class="${btnClass}" data-key="${escapeAttr(r.key)}" onclick="requestTitle('${escapeAttr(r.key)}')" ${btnDisabled}>${btnLabel}</button>
+        <button class="${btnClass}" data-key="${escapeAttr(r.key)}" ${btnDisabled}>${btnLabel}</button>
       </div>
     </div>`;
   }).join('');
+
+  $('#results').querySelectorAll('.btn-request').forEach((btn) => {
+    btn.addEventListener('click', () => requestTitle(btn.dataset.key));
+  });
 }
 
 async function requestTitle(key) {
@@ -338,7 +342,7 @@ async function requestTitle(key) {
       btn.textContent = 'Request';
       return;
     }
-    await submitMovieRequest(tmdbId, item.title, settings, btn);
+    await submitMovieRequest(tmdbId, item.title, settings, btn, item._cacheKey);
   } catch (err) {
     showToast(`Error: ${err.message}`, 'error');
     btn.disabled = false;
@@ -346,7 +350,7 @@ async function requestTitle(key) {
   }
 }
 
-async function submitMovieRequest(tmdbId, title, settings, btn) {
+async function submitMovieRequest(tmdbId, title, settings, btn, cacheKey) {
   const baseUrl = settings.ombiUrl.replace(/\/+$/, '');
   const resp = await fetchWithTimeout(`${baseUrl}/api/v1/Request/movie`, {
     method: 'POST',
@@ -358,12 +362,12 @@ async function submitMovieRequest(tmdbId, title, settings, btn) {
     showToast(`"${title}" requested!`, 'success');
     btn.textContent = 'Requested';
     btn.classList.add('requested');
-    markAsRequested(`detected-${title}-movie`);
+    if (cacheKey) markAsRequested(cacheKey);
   } else if (result.errorCode === 'AlreadyRequested') {
     showToast(`"${title}" was already requested.`, 'info');
     btn.textContent = 'Requested';
     btn.classList.add('requested');
-    markAsRequested(`detected-${title}-movie`);
+    if (cacheKey) markAsRequested(cacheKey);
   } else {
     showToast(result.errorMessage || result.message || 'Request failed', 'error');
     btn.disabled = false;
@@ -508,7 +512,8 @@ async function openSeasonPicker(item, tmdbId, settings, originBtn) {
     };
 
     $('#modalClose').addEventListener('click', () => { cleanup(); resolve(); }, { once: true });
-    modal.addEventListener('click', (e) => { if (e.target === modal) { cleanup(); resolve(); } }, { once: true });
+    const overlayHandler = (e) => { if (e.target === modal) { cleanup(); modal.removeEventListener('click', overlayHandler); resolve(); } };
+    modal.addEventListener('click', overlayHandler);
 
     $('#reqAll').addEventListener('click', () => doRequest({ requestAll: true }), { once: true });
     $('#reqLatest').addEventListener('click', () => doRequest({ latestSeason: true }), { once: true });
@@ -520,24 +525,18 @@ async function openSeasonPicker(item, tmdbId, settings, originBtn) {
   });
 }
 
-function countSeasonEps(seasonChecks, seasons) {
-  let count = 0;
-  seasonChecks.forEach((cb) => {
-    const s = seasons.find((s) => s.seasonNumber === parseInt(cb.dataset.season));
-    if (s) count += (s.episodes || []).filter((e) => !e.available && !e.requested).length;
-  });
-  return count;
-}
-
 function buildSelectedSeasons(seasonList, seasons) {
   const result = [];
   for (const s of seasons) {
     const seasonCb = seasonList.querySelector(`.season-check[data-season="${s.seasonNumber}"]`);
     if (seasonCb && seasonCb.checked && !seasonCb.disabled) {
-      result.push({
-        seasonNumber: s.seasonNumber,
-        episodes: (s.episodes || []).filter((e) => !e.available && !e.requested).map((e) => ({ episodeNumber: e.episodeNumber })),
-      });
+      const requestableEps = (s.episodes || []).filter((e) => !e.available && !e.requested);
+      if (requestableEps.length > 0) {
+        result.push({
+          seasonNumber: s.seasonNumber,
+          episodes: requestableEps.map((e) => ({ episodeNumber: e.episodeNumber })),
+        });
+      }
       continue;
     }
     const checkedEps = seasonList.querySelectorAll(`.ep-check[data-season="${s.seasonNumber}"]:checked:not(:disabled)`);
@@ -568,7 +567,7 @@ async function resolveToTmdbId(item, settings) {
 
     if (item.imdbId) {
       const infoType = item.type === 'series' ? 'tv' : 'movie';
-      for (const r of results) {
+      for (const r of results.slice(0, 5)) {
         const rid = r.theMovieDbId || r.id;
         if (!rid) continue;
         try {
@@ -836,7 +835,14 @@ async function detectCurrentPage() {
       }
     }
 
-    btn.addEventListener('click', () => requestDetected(info), { once: true });
+    const detectedHandler = async () => {
+      btn.removeEventListener('click', detectedHandler);
+      await requestDetected(info);
+      if (!btn.disabled && btn.textContent === 'Add to Ombi') {
+        btn.addEventListener('click', detectedHandler);
+      }
+    };
+    btn.addEventListener('click', detectedHandler);
   } catch (err) {
     console.warn('OmbiChrome: page detection failed:', err);
   }
@@ -861,7 +867,7 @@ async function checkOmbiStatus(info, settings) {
       match = results.find((r) => r.imdbId === info.imdbId);
       if (!match) {
         const infoEndpoint = info.type === 'series' ? 'tv' : 'movie';
-        for (const r of results) {
+        for (const r of results.slice(0, 5)) {
           const rid = r.theMovieDbId || r.id;
           if (!rid) continue;
           try {
@@ -923,7 +929,7 @@ async function requestDetected(info) {
     if (info.type === 'series') {
       await openSeasonPicker(info, tmdbId, settings, btn);
     } else {
-      await submitMovieRequest(tmdbId, info.title, settings, btn);
+      await submitMovieRequest(tmdbId, info.title, settings, btn, info._cacheKey);
     }
   } catch (err) {
     showToast(`Error: ${err.message}`, 'error');
