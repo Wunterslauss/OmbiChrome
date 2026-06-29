@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>OmbiChrome <span>v1.0</span></h1>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Search movies & TV shows..." autofocus>
+      <button id="searchBtn">Search</button>
+    </div>
+  </header>
+  <div id="detected" class="detected-bar" style="display:none;">
+    <div class="detected-info">
+      <span class="detected-label">Detected:</span>
+      <span id="detectedTitle" class="detected-title"></span>
+      <span id="detectedMeta" class="detected-meta"></span>
+    </div>
+    <button id="detectedBtn" class="btn-request">Add to Ombi</button>
+  </div>
+  <div class="filters">
+    <button class="active" data-filter="all">All</button>
+    <button data-filter="movie">Movies</button>
+    <button data-filter="series">TV Shows</button>
+  </div>
+  <div id="results">
+    <div class="status-msg">Search for a movie or TV show to get started.</div>
+  </div>
+  <div class="toast-container" id="toasts"></div>
+  <footer>
+    <a id="openSettings">Settings</a>
+  </footer>
+  <script src="popup.js"></script>
+</body>
+</html>
