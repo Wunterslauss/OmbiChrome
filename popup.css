@@ -131,13 +131,6 @@ header h1 span {
   flex-shrink: 0;
 }
 
-.detected-bar .btn-request.success {
-  background: #1a1d23;
-  border: 1px solid #3d424a;
-  color: #3fb950;
-  cursor: default;
-}
-
 .detected-bar .btn-request.error {
   background: #da3633;
   color: #fff;
@@ -325,6 +318,13 @@ header h1 span {
   background: #1a1d23;
   border: 1px solid #3d424a;
   color: #8b949e;
+  cursor: default;
+}
+
+.btn-request.available {
+  background: #238636;
+  border: 1px solid #238636;
+  color: #fff;
   cursor: default;
 }
 

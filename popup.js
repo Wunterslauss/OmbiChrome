@@ -272,7 +272,7 @@ function renderResults() {
     let btnLabel = 'Request';
     let btnClass = 'btn-request';
     let btnDisabled = '';
-    if (r.available) { btnLabel = 'Available'; btnClass += ' requested'; btnDisabled = 'disabled'; }
+    if (r.available) { btnLabel = 'Available'; btnClass += ' available'; btnDisabled = 'disabled'; }
     else if (r.requested) { btnLabel = 'Requested'; btnClass += ' requested'; btnDisabled = 'disabled'; }
 
     return `
@@ -823,11 +823,13 @@ async function detectCurrentPage() {
       info._tmdbId = status.tmdbId;
       if (status.available) {
         btn.textContent = 'Available';
-        btn.classList.add('success');
+        btn.classList.add('available');
+        btn.disabled = true;
         return;
       } else if (status.requested && info.type !== 'series') {
         btn.textContent = 'Requested';
-        btn.classList.add('success');
+        btn.classList.add('requested');
+        btn.disabled = true;
         return;
       } else {
         btn.disabled = false;
@@ -916,8 +918,8 @@ async function requestDetected(info) {
     if (!tmdbId) {
       const status = await checkOmbiStatus(info, settings);
       tmdbId = status.tmdbId;
-      if (status.available) { btn.textContent = 'Available'; btn.classList.add('success'); return; }
-      if (status.requested && info.type !== 'series') { btn.textContent = 'Requested'; btn.classList.add('success'); return; }
+      if (status.available) { btn.textContent = 'Available'; btn.classList.add('available'); btn.disabled = true; return; }
+      if (status.requested && info.type !== 'series') { btn.textContent = 'Requested'; btn.classList.add('requested'); btn.disabled = true; return; }
     }
     if (!tmdbId) {
       showToast(`"${info.title}" not found on TMDB.`, 'error');

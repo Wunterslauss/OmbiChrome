@@ -9,7 +9,7 @@ Browse any movie or show page on popular sites and add it to Ombi with one click
 - **Search** for movies and TV shows directly from the popup using your Ombi instance (powered by TMDB)
 - **Detect** the movie or show you're currently browsing and request it instantly
 - **Season & episode picker** — choose specific seasons or individual episodes when requesting TV shows
-- **Auto-check** whether a title is already requested or available on your media server
+- **Auto-check** whether a title is already requested (grey) or available on your media server (green)
 - **Smart matching** — resolves duplicate titles (e.g. multiple movies named "Ballerina") using IMDB IDs
 - **Filter** results by Movies or TV Shows
 - **Request caching** — remembers what you've requested so the button stays accurate across popup opens
