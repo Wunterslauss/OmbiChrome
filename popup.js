@@ -24,9 +24,15 @@ document.addEventListener('DOMContentLoaded', () => {
   detectCurrentPage();
 });
 
+function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
 async function getSettings() {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(['ombiUrl', 'ombiApiKey', 'omdbApiKey'], resolve);
+    chrome.storage.local.get(['ombiUrl', 'ombiApiKey', 'omdbApiKey'], resolve);
   });
 }
 
@@ -40,7 +46,12 @@ function showToast(message, type = 'info') {
 }
 
 function setStatus(msg, isError = false) {
-  $('#results').innerHTML = `<div class="status-msg ${isError ? 'error' : ''}">${msg}</div>`;
+  const container = $('#results');
+  container.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = `status-msg ${isError ? 'error' : ''}`;
+  div.textContent = msg;
+  container.appendChild(div);
 }
 
 function setLoading() {
@@ -99,7 +110,7 @@ async function doSearch() {
 
 async function searchOmbiMovies(query, settings) {
   const baseUrl = settings.ombiUrl.replace(/\/+$/, '');
-  const resp = await fetch(
+  const resp = await fetchWithTimeout(
     `${baseUrl}/api/v1/Search/movie/${encodeURIComponent(query)}`,
     { headers: { 'ApiKey': settings.ombiApiKey } }
   );
@@ -124,7 +135,7 @@ async function searchOmbiMovies(query, settings) {
 
 async function searchOmbiTv(query, settings) {
   const baseUrl = settings.ombiUrl.replace(/\/+$/, '');
-  const resp = await fetch(
+  const resp = await fetchWithTimeout(
     `${baseUrl}/api/v1/Search/tv/${encodeURIComponent(query)}`,
     { headers: { 'ApiKey': settings.ombiApiKey } }
   );
@@ -155,7 +166,7 @@ async function searchYify(query) {
   let lastErr;
   for (const url of urls) {
     try {
-      const resp = await fetch(url);
+      const resp = await fetchWithTimeout(url);
       if (!resp.ok) { lastErr = new Error(`YIFY HTTP ${resp.status}`); continue; }
       const text = await resp.text();
       if (text.includes('<html')) { lastErr = new Error('YIFY blocked by ISP'); continue; }
@@ -185,7 +196,7 @@ async function searchYify(query) {
 
 async function searchOmdb(query, apiKey) {
   const url = `https://www.omdbapi.com/?s=${encodeURIComponent(query)}&apikey=${encodeURIComponent(apiKey)}`;
-  const resp = await fetch(url);
+  const resp = await fetchWithTimeout(url);
   const data = await resp.json();
   if (data.Response === 'False') return [];
   return data.Search.map((m) => ({
@@ -255,20 +266,17 @@ function renderResults() {
         </div>
       </div>
       <div class="actions">
-        <button class="${btnClass}" data-index="${i}" onclick="requestTitle(${i})" ${btnDisabled}>${btnLabel}</button>
+        <button class="${btnClass}" data-key="${escapeAttr(r.key)}" onclick="requestTitle('${escapeAttr(r.key)}')" ${btnDisabled}>${btnLabel}</button>
       </div>
     </div>`;
   }).join('');
 }
 
-async function requestTitle(index) {
-  const filtered = activeFilter === 'all'
-    ? allResults
-    : allResults.filter((r) => r.type === activeFilter);
-  const item = filtered[index];
+async function requestTitle(key) {
+  const item = allResults.find((r) => r.key === key);
   if (!item) return;
 
-  const btn = $(`.btn-request[data-index="${index}"]`);
+  const btn = $(`.btn-request[data-key="${CSS.escape(key)}"]`);
   btn.disabled = true;
   btn.textContent = '...';
 
@@ -302,7 +310,7 @@ async function requestTitle(index) {
       : { theMovieDbId: tmdbId };
 
     const baseUrl = settings.ombiUrl.replace(/\/+$/, '');
-    const resp = await fetch(`${baseUrl}${endpoint}`, {
+    const resp = await fetchWithTimeout(`${baseUrl}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -337,7 +345,7 @@ async function resolveToTmdbId(item, settings) {
     : '/api/v1/Search/movie';
 
   try {
-    const resp = await fetch(
+    const resp = await fetchWithTimeout(
       `${baseUrl}${endpoint}/${encodeURIComponent(item.title)}`,
       { headers: { 'ApiKey': settings.ombiApiKey } }
     );
@@ -361,7 +369,7 @@ function escapeHtml(str) {
 }
 
 function escapeAttr(str) {
-  return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 async function runScript(tabId, func) {
@@ -405,7 +413,10 @@ async function detectCurrentPage() {
             });
             if (r?.title) { title = r.title; isTv = r.isTv; }
           } catch {}
-          if (!title) title = cleanTabTitle(tab.title, /\s*[-|].*IMDb.*$/i, /\s*\(\d{4}\)\s*$/);
+          if (!title) {
+            title = cleanTabTitle(tab.title, /\s*[-|].*IMDb.*$/i, /\s*\(\d{4}\)\s*$/);
+            if (tab.title && /TV Series|TV Mini/i.test(tab.title)) isTv = true;
+          }
           return title ? { title, imdbId, type: isTv ? 'series' : 'movie' } : null;
         },
       },
@@ -590,7 +601,7 @@ async function detectCurrentPage() {
       }
     }
 
-    btn.addEventListener('click', () => requestDetected(info));
+    btn.addEventListener('click', () => requestDetected(info), { once: true });
   } catch (err) {
     console.warn('OmbiChrome: page detection failed:', err);
   }
@@ -603,7 +614,7 @@ async function checkOmbiStatus(info, settings) {
     : `/api/v1/Search/movie/${encodeURIComponent(info.title)}`;
 
   try {
-    const resp = await fetch(`${baseUrl}${endpoint}`, {
+    const resp = await fetchWithTimeout(`${baseUrl}${endpoint}`, {
       headers: { 'ApiKey': settings.ombiApiKey },
     });
     const results = await resp.json();
@@ -665,7 +676,7 @@ async function requestDetected(info) {
       ? { theMovieDbId: tmdbId, requestAll: true }
       : { theMovieDbId: tmdbId };
 
-    const reqResp = await fetch(`${baseUrl}${reqEndpoint}`, {
+    const reqResp = await fetchWithTimeout(`${baseUrl}${reqEndpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

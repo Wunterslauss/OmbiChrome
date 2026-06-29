@@ -7,7 +7,9 @@
   "host_permissions": [
     "https://yts.mx/*",
     "https://yts.torrentbay.st/*",
-    "https://www.omdbapi.com/*",
+    "https://www.omdbapi.com/*"
+  ],
+  "optional_host_permissions": [
     "https://*/*",
     "http://*/*"
   ],
@@ -30,6 +32,5 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "content_scripts": []
+  }
 }

@@ -1,7 +1,7 @@
 const $ = (s) => document.querySelector(s);
 
 document.addEventListener('DOMContentLoaded', () => {
-  chrome.storage.sync.get(['ombiUrl', 'ombiApiKey', 'omdbApiKey'], (data) => {
+  chrome.storage.local.get(['ombiUrl', 'ombiApiKey', 'omdbApiKey'], (data) => {
     $('#ombiUrl').value = data.ombiUrl || '';
     $('#ombiApiKey').value = data.ombiApiKey || '';
     $('#omdbApiKey').value = data.omdbApiKey || '';
@@ -27,8 +27,26 @@ function save() {
     return;
   }
 
-  chrome.storage.sync.set({ ombiUrl, ombiApiKey, omdbApiKey }, () => {
-    showStatus('Settings saved!', 'success');
+  try {
+    const parsed = new URL(ombiUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      showStatus('URL must start with http:// or https://', 'error');
+      return;
+    }
+  } catch {
+    showStatus('Invalid URL format.', 'error');
+    return;
+  }
+
+  chrome.storage.local.set({ ombiUrl, ombiApiKey, omdbApiKey }, () => {
+    try {
+      const origin = new URL(ombiUrl).origin + '/*';
+      chrome.permissions.request({ origins: [origin] }, (granted) => {
+        showStatus(granted ? 'Settings saved!' : 'Settings saved, but host permission was denied — requests to Ombi may fail.', granted ? 'success' : 'error');
+      });
+    } catch {
+      showStatus('Settings saved!', 'success');
+    }
   });
 }
 
@@ -44,9 +62,13 @@ async function testConnection() {
   showStatus('Testing...', 'success');
 
   try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 10000);
     const resp = await fetch(`${ombiUrl}/api/v1/Status`, {
       headers: { 'ApiKey': ombiApiKey },
+      signal: controller.signal,
     });
+    clearTimeout(tid);
 
     if (resp.ok) {
       showStatus('Connected to Ombi successfully!', 'success');
