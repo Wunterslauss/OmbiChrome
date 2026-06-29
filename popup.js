@@ -3,6 +3,21 @@ const $$ = (s) => document.querySelectorAll(s);
 
 let allResults = [];
 let activeFilter = 'all';
+const requestedCache = new Set();
+
+async function loadRequestedCache() {
+  try {
+    const data = await chrome.storage.session.get('requestedTitles');
+    if (data.requestedTitles) data.requestedTitles.forEach((t) => requestedCache.add(t));
+  } catch {}
+}
+
+function markAsRequested(key) {
+  requestedCache.add(key);
+  try {
+    chrome.storage.session.set({ requestedTitles: Array.from(requestedCache) });
+  } catch {}
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   $('#searchBtn').addEventListener('click', doSearch);
@@ -21,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  detectCurrentPage();
+  loadRequestedCache().then(() => detectCurrentPage());
 });
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
@@ -343,6 +358,12 @@ async function submitMovieRequest(tmdbId, title, settings, btn) {
     showToast(`"${title}" requested!`, 'success');
     btn.textContent = 'Requested';
     btn.classList.add('requested');
+    markAsRequested(`detected-${title}-movie`);
+  } else if (result.errorCode === 'AlreadyRequested') {
+    showToast(`"${title}" was already requested.`, 'info');
+    btn.textContent = 'Requested';
+    btn.classList.add('requested');
+    markAsRequested(`detected-${title}-movie`);
   } else {
     showToast(result.errorMessage || result.message || 'Request failed', 'error');
     btn.disabled = false;
@@ -352,6 +373,10 @@ async function submitMovieRequest(tmdbId, title, settings, btn) {
 
 async function openSeasonPicker(item, tmdbId, settings, originBtn) {
   const baseUrl = settings.ombiUrl.replace(/\/+$/, '');
+  const defaultLabel = originBtn.textContent === '...' || originBtn.textContent === 'Loading...'
+    ? (originBtn.id === 'detectedBtn' ? 'Add to Ombi' : 'Request')
+    : originBtn.textContent;
+
   const resp = await fetchWithTimeout(`${baseUrl}/api/v1/Search/tv/info/${tmdbId}`, {
     headers: { 'ApiKey': settings.ombiApiKey },
   });
@@ -361,7 +386,7 @@ async function openSeasonPicker(item, tmdbId, settings, originBtn) {
   if (seasons.length === 0) {
     showToast('No season info available.', 'error');
     originBtn.disabled = false;
-    originBtn.textContent = 'Request';
+    originBtn.textContent = defaultLabel;
     return;
   }
 
@@ -397,76 +422,101 @@ async function openSeasonPicker(item, tmdbId, settings, originBtn) {
     </div>`;
   }).join('');
 
-  modal.style.display = 'flex';
-  originBtn.disabled = false;
-  originBtn.textContent = 'Request';
+  return new Promise((resolve) => {
+    modal.style.display = 'flex';
+    originBtn.disabled = false;
+    originBtn.textContent = defaultLabel;
 
-  const updateSelectedBtn = () => {
-    const checked = seasonList.querySelectorAll('.ep-check:checked:not(:disabled)');
-    const seasonChecked = seasonList.querySelectorAll('.season-check:checked:not(:disabled)');
-    const count = checked.length + seasonChecked.length;
-    const reqSelBtn = $('#reqSelected');
-    reqSelBtn.disabled = count === 0;
-    reqSelBtn.textContent = count > 0 ? `Request Selected (${checked.length + countSeasonEps(seasonChecked, seasons)})` : 'Request Selected';
-  };
+    const updateSelectedBtn = () => {
+      const checked = seasonList.querySelectorAll('.ep-check:checked:not(:disabled)');
+      const reqSelBtn = $('#reqSelected');
+      reqSelBtn.disabled = checked.length === 0;
+      reqSelBtn.textContent = checked.length > 0 ? `Request Selected (${checked.length})` : 'Request Selected';
+    };
 
-  seasonList.querySelectorAll('.season-toggle').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const sn = btn.dataset.season;
-      const epList = $(`#eps-${sn}`);
-      epList.classList.toggle('open');
-      btn.classList.toggle('open');
+    seasonList.querySelectorAll('.season-toggle').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sn = btn.dataset.season;
+        const epList = $(`#eps-${sn}`);
+        epList.classList.toggle('open');
+        btn.classList.toggle('open');
+      });
     });
-  });
 
-  seasonList.querySelectorAll('.season-check').forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const sn = cb.dataset.season;
-      const epChecks = seasonList.querySelectorAll(`.ep-check[data-season="${sn}"]:not(:disabled)`);
-      epChecks.forEach((ep) => { ep.checked = cb.checked; });
-      updateSelectedBtn();
+    seasonList.querySelectorAll('.season-check').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const sn = cb.dataset.season;
+        const epChecks = seasonList.querySelectorAll(`.ep-check[data-season="${sn}"]:not(:disabled)`);
+        epChecks.forEach((ep) => { ep.checked = cb.checked; });
+        updateSelectedBtn();
+      });
     });
-  });
 
-  seasonList.querySelectorAll('.ep-check').forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const sn = cb.dataset.season;
-      const seasonCb = seasonList.querySelector(`.season-check[data-season="${sn}"]`);
-      const epChecks = seasonList.querySelectorAll(`.ep-check[data-season="${sn}"]:not(:disabled)`);
-      const allChecked = Array.from(epChecks).every((e) => e.checked);
-      if (seasonCb && !seasonCb.disabled) seasonCb.checked = allChecked;
-      updateSelectedBtn();
+    seasonList.querySelectorAll('.ep-check').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const sn = cb.dataset.season;
+        const seasonCb = seasonList.querySelector(`.season-check[data-season="${sn}"]`);
+        const epChecks = seasonList.querySelectorAll(`.ep-check[data-season="${sn}"]:not(:disabled)`);
+        const allChecked = Array.from(epChecks).every((e) => e.checked);
+        if (seasonCb && !seasonCb.disabled) seasonCb.checked = allChecked;
+        updateSelectedBtn();
+      });
     });
-  });
 
-  const cleanup = () => {
-    modal.style.display = 'none';
-    $('#reqAll').replaceWith($('#reqAll').cloneNode(true));
-    $('#reqLatest').replaceWith($('#reqLatest').cloneNode(true));
-    $('#reqSelected').replaceWith($('#reqSelected').cloneNode(true));
-    $('#modalClose').replaceWith($('#modalClose').cloneNode(true));
-    modal.replaceWith(modal.cloneNode(true));
-  };
+    const cleanup = () => {
+      modal.style.display = 'none';
+      seasonList.innerHTML = '';
+    };
 
-  $('#modalClose').addEventListener('click', cleanup);
-  modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
+    const doRequest = async (options) => {
+      cleanup();
+      originBtn.disabled = true;
+      originBtn.textContent = 'Requesting...';
+      try {
+        const reqResp = await fetchWithTimeout(`${baseUrl}/api/v1/Request/tv`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'ApiKey': settings.ombiApiKey },
+          body: JSON.stringify({
+            tvDbId: tmdbId,
+            requestAll: options.requestAll || false,
+            latestSeason: options.latestSeason || false,
+            firstSeason: false,
+            seasons: options.seasons || [],
+          }),
+        });
+        const result = await reqResp.json();
+        if ((reqResp.ok && !result.isError) || result.errorCode === 'AlreadyRequested') {
+          const msg = result.errorCode === 'AlreadyRequested' ? 'was already requested' : 'requested';
+          showToast(`"${item.title}" ${msg}!`, result.errorCode === 'AlreadyRequested' ? 'info' : 'success');
+          originBtn.textContent = 'Requested';
+          originBtn.classList.add('requested');
+          originBtn.disabled = true;
+          if (item._cacheKey) markAsRequested(item._cacheKey);
+          markAsRequested(`detected-${item.imdbId || item.title}-${item.type}`);
+        } else {
+          showToast(result.errorMessage || result.message || 'Request failed', 'error');
+          originBtn.disabled = false;
+          originBtn.textContent = defaultLabel;
+        }
+      } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
+        originBtn.disabled = false;
+        originBtn.textContent = defaultLabel;
+      }
+      resolve();
+    };
 
-  $('#reqAll').addEventListener('click', async () => {
-    cleanup();
-    await submitTvRequest(tmdbId, item.title, settings, { requestAll: true }, originBtn);
-  });
+    $('#modalClose').addEventListener('click', () => { cleanup(); resolve(); }, { once: true });
+    modal.addEventListener('click', (e) => { if (e.target === modal) { cleanup(); resolve(); } }, { once: true });
 
-  $('#reqLatest').addEventListener('click', async () => {
-    cleanup();
-    await submitTvRequest(tmdbId, item.title, settings, { latestSeason: true }, originBtn);
-  });
-
-  $('#reqSelected').addEventListener('click', async () => {
-    const selectedSeasons = buildSelectedSeasons(seasonList, seasons);
-    if (selectedSeasons.length === 0) return;
-    cleanup();
-    await submitTvRequest(tmdbId, item.title, settings, { seasons: selectedSeasons }, originBtn);
+    $('#reqAll').addEventListener('click', () => doRequest({ requestAll: true }), { once: true });
+    $('#reqLatest').addEventListener('click', () => doRequest({ latestSeason: true }), { once: true });
+    $('#reqSelected').addEventListener('click', () => {
+      const selectedSeasons = buildSelectedSeasons(seasonList, seasons);
+      if (selectedSeasons.length === 0) return;
+      doRequest({ seasons: selectedSeasons });
+    }, { once: true });
   });
 }
 
@@ -501,40 +551,6 @@ function buildSelectedSeasons(seasonList, seasons) {
   return result;
 }
 
-async function submitTvRequest(tvDbId, title, settings, options, btn) {
-  btn.disabled = true;
-  btn.textContent = '...';
-  const baseUrl = settings.ombiUrl.replace(/\/+$/, '');
-  const body = {
-    tvDbId,
-    requestAll: options.requestAll || false,
-    latestSeason: options.latestSeason || false,
-    firstSeason: false,
-    seasons: options.seasons || [],
-  };
-
-  try {
-    const resp = await fetchWithTimeout(`${baseUrl}/api/v1/Request/tv`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'ApiKey': settings.ombiApiKey },
-      body: JSON.stringify(body),
-    });
-    const result = await resp.json();
-    if (resp.ok && !result.isError) {
-      showToast(`"${title}" requested!`, 'success');
-      btn.textContent = 'Requested';
-      btn.classList.add('requested');
-    } else {
-      showToast(result.errorMessage || result.message || 'Request failed', 'error');
-      btn.disabled = false;
-      btn.textContent = 'Request';
-    }
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-    btn.disabled = false;
-    btn.textContent = 'Request';
-  }
-}
 
 async function resolveToTmdbId(item, settings) {
   const baseUrl = settings.ombiUrl.replace(/\/+$/, '');
@@ -785,11 +801,20 @@ async function detectCurrentPage() {
 
     if (!info) return;
 
+    const cacheKey = `detected-${info.imdbId || info.title}-${info.type}`;
     const bar = $('#detected');
     const btn = $('#detectedBtn');
     $('#detectedTitle').textContent = info.title;
     $('#detectedMeta').textContent = `${info.type === 'series' ? 'TV Show' : 'Movie'} — via ${info.source}${info.imdbId ? ' (' + info.imdbId + ')' : ''}`;
     bar.style.display = 'flex';
+    info._cacheKey = cacheKey;
+
+    if (requestedCache.has(cacheKey)) {
+      btn.textContent = 'Requested';
+      btn.classList.add('requested');
+      btn.disabled = true;
+      return;
+    }
 
     const settings = await getSettings();
     if (settings.ombiUrl && settings.ombiApiKey) {
@@ -798,11 +823,11 @@ async function detectCurrentPage() {
       const status = await checkOmbiStatus(info, settings);
       info._tmdbId = status.tmdbId;
       if (status.available) {
-        btn.textContent = 'Already available';
+        btn.textContent = 'Available';
         btn.classList.add('success');
         return;
       } else if (status.requested && info.type !== 'series') {
-        btn.textContent = 'Already requested';
+        btn.textContent = 'Requested';
         btn.classList.add('success');
         return;
       } else {
@@ -885,8 +910,8 @@ async function requestDetected(info) {
     if (!tmdbId) {
       const status = await checkOmbiStatus(info, settings);
       tmdbId = status.tmdbId;
-      if (status.available) { btn.textContent = 'Already available'; btn.classList.add('success'); return; }
-      if (status.requested && info.type !== 'series') { btn.textContent = 'Already requested'; btn.classList.add('success'); return; }
+      if (status.available) { btn.textContent = 'Available'; btn.classList.add('success'); return; }
+      if (status.requested && info.type !== 'series') { btn.textContent = 'Requested'; btn.classList.add('success'); return; }
     }
     if (!tmdbId) {
       showToast(`"${info.title}" not found on TMDB.`, 'error');
